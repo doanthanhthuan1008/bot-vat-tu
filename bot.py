@@ -9,35 +9,28 @@ from telegram.ext import (
 )
 from openpyxl import load_workbook
 from docx import Document
-from docx.shared import Pt
 import gspread
 from google.oauth2.service_account import Credentials
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ====== CẤU HÌNH ======
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 SEP_CHAT_ID = int(os.environ.get("SEP_CHAT_ID", "0"))
 NHOM_VAT_TU_ID = int(os.environ.get("NHOM_VAT_TU_ID", "0"))
-GOOGLE_SHEETS_ID = os.environ.get("GOOGLE_SHEETS_ID", "")
 
 # ====== TRẠNG THÁI ======
-# Vật tư
 (VT_BO_PHAN, VT_MA, VT_TEN, VT_DVT, VT_NHU_CAU,
  VT_TON_KHO, VT_SO_LUONG, VT_XUAT_XU, VT_MUC_DICH,
  VT_NGAY_GIAO, VT_GHI_CHU, VT_THEM, VT_XAC_NHAN) = range(13)
 
-# Đề xuất
 (DX_BO_PHAN, DX_NOI_DUNG, DX_XAC_NHAN) = range(13, 16)
 
-# Thanh toán
 (TT_HO_TEN, TT_CHUC_DANH, TT_BO_PHAN, TT_NOI_DUNG,
  TT_SO_HD, TT_NGAY_HD, TT_SO_TIEN, TT_HINH_THUC,
  TT_SO_TK, TT_NGAN_HANG, TT_CHU_TK, TT_XAC_NHAN) = range(16, 28)
 
 store = {}
-
 
 # ====== MENU CHÍNH ======
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -52,18 +45,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
-
-async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    if query.data == "menu_vattu":
-        await query.message.reply_text("Gõ /vattu để bắt đầu yêu cầu vật tư")
-    elif query.data == "menu_deuxuat":
-        await query.message.reply_text("Gõ /deuxuat để bắt đầu phiếu đề xuất")
-    elif query.data == "menu_thanhtoan":
-        await query.message.reply_text("Gõ /thanhtoan để bắt đầu đề nghị thanh toán")
-
-
 # ====== LUỒNG VẬT TƯ ======
 async def vattu_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -73,10 +54,17 @@ async def vattu_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "nguoi_de_nghi": f"{user.first_name} {user.last_name or ''}".strip(),
         "bo_phan": "", "vat_tu": [], "vat_tu_hien_tai": {}
     }
-    await update.message.reply_text(
-        "📦 *YÊU CẦU VẬT TƯ*\n\nBạn thuộc Phòng/Bộ phận nào?",
-        parse_mode="Markdown"
-    )
+    if update.callback_query:
+        await update.callback_query.answer()
+        await update.callback_query.message.reply_text(
+            "📦 *YÊU CẦU VẬT TƯ*\n\nBạn thuộc Phòng/Bộ phận nào?",
+            parse_mode="Markdown"
+        )
+    else:
+        await update.message.reply_text(
+            "📦 *YÊU CẦU VẬT TƯ*\n\nBạn thuộc Phòng/Bộ phận nào?",
+            parse_mode="Markdown"
+        )
     return VT_BO_PHAN
 
 async def vt_bo_phan(update, context):
@@ -216,7 +204,6 @@ async def vt_xacnhan_callback(update, context):
     store.pop(uid, None)
     return ConversationHandler.END
 
-
 # ====== LUỒNG ĐỀ XUẤT ======
 async def deuxuat_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -226,16 +213,21 @@ async def deuxuat_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "ho_ten": f"{user.first_name} {user.last_name or ''}".strip(),
         "bo_phan": "", "noi_dung": ""
     }
-    await update.message.reply_text(
-        "📝 *PHIẾU ĐỀ XUẤT*\n\nBạn thuộc Phòng/Bộ phận nào?",
-        parse_mode="Markdown"
-    )
+    msg = "📝 *PHIẾU ĐỀ XUẤT*\n\nBạn thuộc Phòng/Bộ phận nào?"
+    if update.callback_query:
+        await update.callback_query.answer()
+        await update.callback_query.message.reply_text(msg, parse_mode="Markdown")
+    else:
+        await update.message.reply_text(msg, parse_mode="Markdown")
     return DX_BO_PHAN
 
 async def dx_bo_phan(update, context):
     uid = update.effective_user.id
     store[f"dx_{uid}"]["bo_phan"] = update.message.text
-    await update.message.reply_text("📋 Nội dung đề xuất của bạn là gì?\n_(Viết chi tiết nội dung cần đề xuất)_", parse_mode="Markdown")
+    await update.message.reply_text(
+        "📋 Nội dung đề xuất của bạn là gì?\n_(Viết chi tiết nội dung cần đề xuất)_",
+        parse_mode="Markdown"
+    )
     return DX_NOI_DUNG
 
 async def dx_noi_dung(update, context):
@@ -284,28 +276,24 @@ async def dx_xacnhan_callback(update, context):
     store.pop(f"dx_{uid}", None)
     return ConversationHandler.END
 
-
 # ====== LUỒNG THANH TOÁN ======
 async def thanhtoan_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     uid = user.id
     store[f"tt_{uid}"] = {
         "id": f"tt_{uid}_{int(datetime.now().timestamp())}",
-        "ho_ten": "", "chuc_danh": "", "bo_phan": "",
+        "ho_ten": f"{user.first_name} {user.last_name or ''}".strip(),
+        "chuc_danh": "", "bo_phan": "",
         "noi_dung": "", "so_hd": "", "ngay_hd": "",
         "so_tien": "", "hinh_thuc": "", "so_tk": "",
         "ngan_hang": "", "chu_tk": ""
     }
-    await update.message.reply_text(
-        "💰 *ĐỀ NGHỊ THANH TOÁN*\n\nHọ và tên của bạn?",
-        parse_mode="Markdown"
-    )
-    return TT_HO_TEN
-
-async def tt_ho_ten(update, context):
-    uid = update.effective_user.id
-    store[f"tt_{uid}"]["ho_ten"] = update.message.text
-    await update.message.reply_text("Chức danh:")
+    msg = "💰 *ĐỀ NGHỊ THANH TOÁN*\n\nChức danh của bạn là gì?\n_(Ví dụ: Nhân viên kỹ thuật, Trưởng phòng...)_"
+    if update.callback_query:
+        await update.callback_query.answer()
+        await update.callback_query.message.reply_text(msg, parse_mode="Markdown")
+    else:
+        await update.message.reply_text(msg, parse_mode="Markdown")
     return TT_CHUC_DANH
 
 async def tt_chuc_danh(update, context):
@@ -360,11 +348,19 @@ async def tt_hinh_thuc_callback(update, context):
         store[f"tt_{uid}"]["so_tk"] = ""
         store[f"tt_{uid}"]["ngan_hang"] = ""
         store[f"tt_{uid}"]["chu_tk"] = ""
-        await query.message.reply_text("✅ Chọn tiền mặt. Bạn xác nhận gửi không?",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("✅ Xác nhận gửi", callback_data=f"tt_xacnhan_{uid}"),
-                InlineKeyboardButton("❌ Hủy", callback_data=f"tt_huy_{uid}"),
-            ]]))
+        d = store[f"tt_{uid}"]
+        keyboard = [[
+            InlineKeyboardButton("✅ Xác nhận gửi", callback_data=f"tt_xacnhan_{uid}"),
+            InlineKeyboardButton("❌ Hủy", callback_data=f"tt_huy_{uid}"),
+        ]]
+        await query.message.reply_text(
+            f"💰 *XEM LẠI ĐỀ NGHỊ THANH TOÁN:*\n\n"
+            f"👤 {d['ho_ten']} — {d['chuc_danh']} | 🏢 {d['bo_phan']}\n"
+            f"📋 {d['noi_dung']}\n"
+            f"💵 {d['so_tien']} VNĐ — {d['hinh_thuc']}",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown"
+        )
         return TT_XAC_NHAN
     else:
         await query.message.reply_text("Số tài khoản:")
@@ -415,7 +411,7 @@ async def tt_xacnhan_callback(update, context):
         ten_file = tao_phieu_thanhtoan(d)
         tom_tat = (
             f"💰 *ĐỀ NGHỊ THANH TOÁN*\n"
-            f"👤 {d['ho_ten']} | 🏢 {d['bo_phan']}\n"
+            f"👤 {d['ho_ten']} — {d['chuc_danh']} | 🏢 {d['bo_phan']}\n"
             f"📋 {d['noi_dung']}\n"
             f"💵 {d['so_tien']} VNĐ — {d['hinh_thuc']}"
         )
@@ -436,7 +432,6 @@ async def tt_xacnhan_callback(update, context):
         await query.message.reply_text("❌ Có lỗi xảy ra.")
     store.pop(f"tt_{uid}", None)
     return ConversationHandler.END
-
 
 # ====== XỬ LÝ DUYỆT / TỪ CHỐI ======
 async def xu_ly_duyet(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -495,9 +490,7 @@ async def xu_ly_duyet(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         except:
             pass
-
     store.pop(key, None)
-
 
 # ====== TẠO FILE ======
 def tao_phieu_vattu(d):
@@ -528,12 +521,12 @@ def tao_phieu_deuxuat(d):
     doc = Document()
     doc.add_heading("CÔNG TY TNHH MTV CORNER", 0)
     doc.add_heading("PHIẾU ĐỀ XUẤT (BM/24/CORNER)", 1)
-    doc.add_paragraph(f"Kính gửi: BAN LÃNH ĐẠO CÔNG TY TNHH MTV CORNER")
+    doc.add_paragraph("Kính gửi: BAN LÃNH ĐẠO CÔNG TY TNHH MTV CORNER")
     doc.add_paragraph(f"Tôi tên là: {d['ho_ten']}    Bộ phận: {d['bo_phan']}")
     doc.add_paragraph("Nội dung đề xuất:")
     doc.add_paragraph(d['noi_dung'])
     ngay = datetime.now()
-    doc.add_paragraph(f"\nKính trình Ban Lãnh Đạo xét duyệt!")
+    doc.add_paragraph("\nKính trình Ban Lãnh Đạo xét duyệt!")
     doc.add_paragraph(f"Đà Nẵng, ngày {ngay.day} tháng {ngay.month} năm {ngay.year}")
     ten_file = f"PhieuDeXuat_{d['id']}.docx"
     doc.save(ten_file)
@@ -568,7 +561,6 @@ def tao_phieu_thanhtoan(d):
     doc.save(ten_file)
     return ten_file
 
-
 # ====== HỦY ======
 async def huy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
@@ -578,14 +570,14 @@ async def huy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("❌ Đã hủy. Gõ /start để bắt đầu lại.")
     return ConversationHandler.END
 
-
 def main():
-    from telegram.ext import ConversationHandler
     app = Application.builder().token(BOT_TOKEN).build()
 
-    # Conv vật tư
     vt_conv = ConversationHandler(
-        entry_points=[CommandHandler("vattu", vattu_start)],
+        entry_points=[
+            CommandHandler("vattu", vattu_start),
+            CallbackQueryHandler(vattu_start, pattern="^menu_vattu$"),
+        ],
         states={
             VT_BO_PHAN: [MessageHandler(filters.TEXT & ~filters.COMMAND, vt_bo_phan)],
             VT_MA: [MessageHandler(filters.TEXT & ~filters.COMMAND, vt_ma)],
@@ -604,9 +596,11 @@ def main():
         fallbacks=[CommandHandler("huy", huy)],
     )
 
-    # Conv đề xuất
     dx_conv = ConversationHandler(
-        entry_points=[CommandHandler("deuxuat", deuxuat_start)],
+        entry_points=[
+            CommandHandler("deuxuat", deuxuat_start),
+            CallbackQueryHandler(deuxuat_start, pattern="^menu_deuxuat$"),
+        ],
         states={
             DX_BO_PHAN: [MessageHandler(filters.TEXT & ~filters.COMMAND, dx_bo_phan)],
             DX_NOI_DUNG: [MessageHandler(filters.TEXT & ~filters.COMMAND, dx_noi_dung)],
@@ -615,11 +609,12 @@ def main():
         fallbacks=[CommandHandler("huy", huy)],
     )
 
-    # Conv thanh toán
     tt_conv = ConversationHandler(
-        entry_points=[CommandHandler("thanhtoan", thanhtoan_start)],
+        entry_points=[
+            CommandHandler("thanhtoan", thanhtoan_start),
+            CallbackQueryHandler(thanhtoan_start, pattern="^menu_thanhtoan$"),
+        ],
         states={
-            TT_HO_TEN: [MessageHandler(filters.TEXT & ~filters.COMMAND, tt_ho_ten)],
             TT_CHUC_DANH: [MessageHandler(filters.TEXT & ~filters.COMMAND, tt_chuc_danh)],
             TT_BO_PHAN: [MessageHandler(filters.TEXT & ~filters.COMMAND, tt_bo_phan)],
             TT_NOI_DUNG: [MessageHandler(filters.TEXT & ~filters.COMMAND, tt_noi_dung)],
@@ -636,24 +631,10 @@ def main():
     )
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(menu_callback, pattern="^menu_"))
     app.add_handler(vt_conv)
     app.add_handler(dx_conv)
     app.add_handler(tt_conv)
     app.add_handler(CallbackQueryHandler(xu_ly_duyet, pattern="^(duyet_|tuchoi_)"))
-
-    # Đăng ký lệnh menu
-    from telegram import BotCommand
-    import asyncio
-    async def set_commands():
-        await app.bot.set_my_commands([
-            BotCommand("start", "Màn hình chính"),
-            BotCommand("vattu", "Yêu cầu vật tư"),
-            BotCommand("deuxuat", "Phiếu đề xuất"),
-            BotCommand("thanhtoan", "Đề nghị thanh toán"),
-            BotCommand("huy", "Hủy thao tác hiện tại"),
-        ])
-    asyncio.get_event_loop().run_until_complete(set_commands())
 
     logger.info("Bot đang chạy...")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
