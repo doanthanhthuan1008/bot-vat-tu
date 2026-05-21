@@ -114,23 +114,26 @@ async def excel_nhan_file(update, context):
         ten_file_tai = f"upload_{uid}.xlsx"
         await file.download_to_drive(ten_file_tai)
 
-        wb = load_workbook(ten_file_tai)
+        wb = load_workbook(ten_file_tai, data_only=True)
         ws = wb.active
         vat_tu_list = []
-        for row in ws.iter_rows(min_row=2, values_only=True):
-            if not row[1]:
+        # Đọc dữ liệu từ dòng 16-25 theo cấu trúc file CORNER
+        # Cột: A=STT, B=Mã VT, C=Tên VT, D=ĐVT, E=Nhu cầu, F=Tồn kho, G=SL mua, H=Xuất xứ, I=Mục đích, J=Ngày giao, K=Ghi chú
+        for row_num in range(16, 26):
+            ten_vat_tu = ws.cell(row=row_num, column=3).value
+            if not ten_vat_tu:
                 continue
             vat_tu_list.append({
-                "ma_vat_tu": str(row[0] or ""),
-                "ten_vat_tu": str(row[1] or ""),
-                "dvt": str(row[2] or ""),
-                "so_luong_mua": str(row[3] or ""),
-                "muc_dich": str(row[4] or ""),
-                "nhu_cau": str(row[3] or ""),
-                "ton_kho": "0",
-                "xuat_xu": "",
-                "ngay_giao": "",
-                "ghi_chu": "",
+                "ma_vat_tu": str(ws.cell(row=row_num, column=2).value or ""),
+                "ten_vat_tu": str(ten_vat_tu or ""),
+                "dvt": str(ws.cell(row=row_num, column=4).value or ""),
+                "nhu_cau": str(ws.cell(row=row_num, column=5).value or ""),
+                "ton_kho": str(ws.cell(row=row_num, column=6).value or "0"),
+                "so_luong_mua": str(ws.cell(row=row_num, column=7).value or ""),
+                "xuat_xu": str(ws.cell(row=row_num, column=8).value or ""),
+                "muc_dich": str(ws.cell(row=row_num, column=9).value or ""),
+                "ngay_giao": str(ws.cell(row=row_num, column=10).value or ""),
+                "ghi_chu": str(ws.cell(row=row_num, column=11).value or ""),
             })
 
         if not vat_tu_list:
